@@ -180,6 +180,7 @@ Manage users, roles, and account status.
 **PATCH** `/api/users/:id/role`
 
 **Role Values:**
+  * `100` → SuperAdmin
   * `0` → Admin
   * `1` → Analyst
   * `2` → Viewer
