@@ -8,37 +8,46 @@ const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 // @route   GET /api/records
 // @access  Private (Admin=0, Analyst=1, Viewer=2)
 const getRecords = async (req, res) => {
+    const query = req.query;
+    const filterQuery = {};
+
+    // Build the filterQuery object dynamically based on what the user sent
+    if (query.type) {
+        filterQuery.type = query.type;
+    }
+
+    if (query.category) {
+        // Use regex for partial, case-insensitive match
+        filterQuery.category = { $regex: query.category, $options: 'i' };
+    }
+
+    if (query.startDate) {
+        // Initialize date object if it doesn't exist
+        if (!filterQuery.date) {
+            filterQuery.date = {};
+        }
+        filterQuery.date.$gte = new Date(query.startDate);
+    }
+
+    if (query.endDate) {
+        // Initialize date object if it doesn't exist
+        if (!filterQuery.date) {
+            filterQuery.date = {};
+        }
+        filterQuery.date.$lte = new Date(query.endDate);
+    }
+
     try {
-        const { type, category, startDate, endDate } = req.query;
+        // Fetch the records from the database using our filterQuery
+        const records = await Record.find(filterQuery)
+            .sort({ date: -1 })
+            .populate('user', 'name email');
 
-        // 400 Bad Request — invalid type filter
-        if (type && !['income', 'expense'].includes(type)) {
-            return res.status(400).json({ message: 'Invalid type filter. Use income or expense.' });
-        }
-
-        let query = {};
-        if (type) query.type = type;
-        if (category) query.category = { $regex: category, $options: 'i' }; // case-insensitive match
-        if (startDate || endDate) {
-            query.date = {};
-            if (startDate) {
-                const start = new Date(startDate);
-                if (isNaN(start)) return res.status(400).json({ message: 'Invalid startDate format.' });
-                query.date.$gte = start;
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                if (isNaN(end)) return res.status(400).json({ message: 'Invalid endDate format.' });
-                query.date.$lte = end;
-            }
-        }
-
-        // 200 OK — records retrieved successfully
-        const records = await Record.find(query).sort({ date: -1 }).populate('user', 'name email');
+        // 200 OK - Everything went well and we are returning the data
         res.status(200).json(records);
     } catch (error) {
-        console.error(error);
-        // 500 Internal Server Error — unexpected failure
+        // 500 Internal Server Error - Something went wrong on the server side
+        console.log(error);
         res.status(500).json({ message: 'Server error fetching records' });
     }
 };
@@ -48,22 +57,22 @@ const getRecords = async (req, res) => {
 // @access  Private (Admin=0, Analyst=1, Viewer=2)
 const getRecordById = async (req, res) => {
     try {
-        // 400 Bad Request — malformed ID
         if (!isValidId(req.params.id)) {
+            // 400 Bad Request - The ID format is not valid
             return res.status(400).json({ message: 'Invalid record ID format.' });
         }
 
         const record = await Record.findById(req.params.id).populate('user', 'name email');
 
-        // 404 Not Found — record does not exist
         if (!record) {
+            // 404 Not Found - Record could not be found in the database
             return res.status(404).json({ message: 'Record not found.' });
         }
 
-        // 200 OK — record found
+        // 200 OK - Record found
         res.status(200).json(record);
     } catch (error) {
-        console.error(error);
+        console.log(error);
         res.status(500).json({ message: 'Server error fetching record' });
     }
 };
@@ -73,47 +82,43 @@ const getRecordById = async (req, res) => {
 // @access  Private (Admin=0, Analyst=1)
 const createRecord = async (req, res) => {
     try {
-        const { title, amount, type, category, date, notes } = req.body;
+        // Extract data from the incoming request body
+        const title = req.body.title;
+        const amount = req.body.amount;
+        const type = req.body.type;
+        const category = req.body.category;
+        const date = req.body.date;
+        const notes = req.body.notes;
 
-        // 400 Bad Request — missing required fields
-        if (!title || amount === undefined || !type || !category) {
+        // Basic Validation
+        if (!title || !amount || !type || !category) {
+            // 400 Bad Request - The user forgot to send required fields
             return res.status(400).json({ message: 'title, amount, type and category are all required.' });
         }
 
-        // 400 Bad Request — invalid type value
-        if (!['income', 'expense'].includes(type)) {
-            return res.status(400).json({ message: 'type must be either income or expense.' });
+        let parsedDate;
+        if (date) {
+            parsedDate = new Date(date);
+        } else {
+            parsedDate = new Date();
         }
 
-        // 400 Bad Request — amount must be a positive number
-        if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) {
-            return res.status(400).json({ message: 'amount must be a positive number.' });
-        }
-
-        // 400 Bad Request — title exceeds reasonable length
-        if (title.trim().length < 2) {
-            return res.status(400).json({ message: 'title must be at least 2 characters.' });
-        }
-
-        let parsedDate = date ? new Date(date) : new Date();
-        if (isNaN(parsedDate)) {
-            return res.status(400).json({ message: 'Invalid date format.' });
-        }
-
-        // 201 Created — record successfully created
-        const record = await Record.create({
-            title: title.trim(),
-            amount,
-            type,
-            category: category.trim(),
+        // Create the record in the database
+        const newRecord = await Record.create({
+            title: title,
+            amount: Number(amount), // Ensure it is treated as a number
+            type: type,
+            category: category,
             date: parsedDate,
-            notes: notes ? notes.trim() : '',
+            notes: notes,
             user: req.user.id
         });
 
-        res.status(201).json(record);
+        // 201 Created - The resource was successfully created
+        res.status(201).json(newRecord);
     } catch (error) {
-        console.error(error);
+        // 500 Internal Server Error - Something went wrong on the server side
+        console.log(error);
         res.status(500).json({ message: 'Server error creating record' });
     }
 };
@@ -123,58 +128,54 @@ const createRecord = async (req, res) => {
 // @access  Private (Admin=0 only)
 const updateRecord = async (req, res) => {
     try {
-        // 400 Bad Request — malformed ID
         if (!isValidId(req.params.id)) {
+            // 400 Bad Request - Missing or invalid ID
             return res.status(400).json({ message: 'Invalid record ID format.' });
         }
 
         const record = await Record.findById(req.params.id);
 
-        // 404 Not Found — record does not exist
         if (!record) {
+            // 404 Not Found - The record does not exist
             return res.status(404).json({ message: 'Record not found.' });
         }
 
-        const { title, amount, type, category, date, notes } = req.body;
+        // Extract data from the request body
+        const title = req.body.title;
+        const amount = req.body.amount;
+        const type = req.body.type;
+        const category = req.body.category;
+        const date = req.body.date;
+        const notes = req.body.notes;
 
-        // 400 Bad Request — invalid type
-        if (type && !['income', 'expense'].includes(type)) {
-            return res.status(400).json({ message: 'type must be either income or expense.' });
+        // Update the fields only if they were provided by the user
+        if (title) {
+            record.title = title;
         }
-
-        // 400 Bad Request — invalid amount
-        if (amount !== undefined && (typeof amount !== 'number' || isNaN(amount) || amount <= 0)) {
-            return res.status(400).json({ message: 'amount must be a positive number.' });
+        if (amount !== undefined) {
+            record.amount = Number(amount);
         }
-
-        // 400 Bad Request — title too short
-        if (title !== undefined && title.trim().length < 2) {
-            return res.status(400).json({ message: 'title must be at least 2 characters.' });
+        if (type) {
+            record.type = type;
         }
-
-        let parsedDate;
+        if (category) {
+            record.category = category;
+        }
         if (date) {
-            parsedDate = new Date(date);
-            if (isNaN(parsedDate)) return res.status(400).json({ message: 'Invalid date format.' });
+            record.date = new Date(date);
+        }
+        if (notes !== undefined) {
+            record.notes = notes;
         }
 
-        // 200 OK — record updated
-        const updatedRecord = await Record.findByIdAndUpdate(
-            req.params.id,
-            {
-                ...(title && { title: title.trim() }),
-                ...(amount !== undefined && { amount }),
-                ...(type && { type }),
-                ...(category && { category: category.trim() }),
-                ...(parsedDate && { date: parsedDate }),
-                ...(notes !== undefined && { notes: notes.trim() }),
-            },
-            { new: true, runValidators: true }
-        );
+        // Save the updated record to the database
+        const updatedRecord = await record.save();
 
+        // 200 OK - Request succeeded
         res.status(200).json(updatedRecord);
     } catch (error) {
-        console.error(error);
+        // 500 Internal Server Error
+        console.log(error);
         res.status(500).json({ message: 'Server error updating record' });
     }
 };
@@ -184,24 +185,26 @@ const updateRecord = async (req, res) => {
 // @access  Private (Admin=0 only)
 const deleteRecord = async (req, res) => {
     try {
-        // 400 Bad Request — malformed ID
         if (!isValidId(req.params.id)) {
+            // 400 Bad Request - Invalid ID formatting
             return res.status(400).json({ message: 'Invalid record ID format.' });
         }
 
         const record = await Record.findById(req.params.id);
 
-        // 404 Not Found — record does not exist
         if (!record) {
+            // 404 Not Found
             return res.status(404).json({ message: 'Record not found.' });
         }
 
+        // Proceed to delete
         await record.deleteOne();
 
-        // 200 OK — record deleted
+        // 200 OK - Successful deletion
         res.status(200).json({ message: 'Record deleted successfully.', id: req.params.id });
     } catch (error) {
-        console.error(error);
+        // 500 Internal Server Error
+        console.log(error);
         res.status(500).json({ message: 'Server error deleting record' });
     }
 };
@@ -212,10 +215,11 @@ const deleteRecord = async (req, res) => {
 const getCategories = async (req, res) => {
     try {
         const categories = await Record.distinct('category');
-        // 200 OK — sorted unique categories
+        // 200 OK - Request succeeded
         res.status(200).json(categories.sort());
     } catch (error) {
-        console.error(error);
+        // 500 Internal Server Error
+        console.log(error);
         res.status(500).json({ message: 'Server error fetching categories' });
     }
 };

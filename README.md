@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-# Financial-Record-System
-=======
 # Financial Record System
 
-Hi! Welcome to my Financial Record System project. I built this full-stack web application to manage personal or business financial records (income and expenses). This was a great learning experience for me to understand how React (Next.js), Node.js, Express, and MongoDB all connect together, as well as how to implement Role-Based Access Control (RBAC).
+Hi! This is my Financial Record System project. I built this full-stack web application to manage personal or business financial records (income and expenses). This was a great learning experience for me to understand how React (Next.js), Node.js, Express, and MongoDB all connect together, as well as how to implement Role-Based Access Control.
 
 ## What This Project Does
 
@@ -14,6 +11,7 @@ I've also built a user-role system with 4 different levels:
 - **Admin (Role 0)**: Can view, add, edit, and delete records. Cannot manage users (only SuperAdmin can do that now).
 - **Analyst (Role 1)**: Can view records, create new ones, and see the analytics dashboard. Cannot edit or delete records.
 - **Viewer (Role 2)**: Can only view the ledger and records, but cannot add, edit, delete, or see the analytics dashboard.
+These roles are enforced on both the backend (using middleware to protect routes) and the frontend (by conditionally rendering UI based on the user's role).
 
 ## Tech Stack Used
 
@@ -89,9 +87,120 @@ To assign the first SuperAdmin so you can test all the features:
 Now you can use that SuperAdmin account directly from the UI to create Admins and Analysts.
 
 ## Things I Learned & Challenges
-- Building the custom SVG donut pie chart was tricky! I had to learn how SVG paths calculate arcs using Pi and Math.sin/Math.cos to correctly slice the pie graph based on percentage.
-- Managing states in React when sorting and paging huge datasets takes some time to figure out. I added simple client side pagination so the site doesn't get slow if there's a lot of data.
-- Using Javascript's `.startsWith()` instead of `===` to fix the sidebar highlights was a small but important bug fix so that child-pages still highlight the parent navigation button!
+- **Managing Role-Based Access Control (RBAC):** Creating a clean system where numerical roles (e.g., 100 for SuperAdmin, 0 for Admin) dictate what UI elements render dynamically on the Next.js frontend, while simultaneously verifying those permission tiers securely on the Express backend.
+- **Centralizing API Logic with Axios:** Transitioning from scattered native `fetch` wrappers to a centralized `axiosApiInstance`. It taught me how to cleanly attach JWT authorization headers globally and standardly catch unauthorized (401) errors or token expirations across the whole application.
+- **Dynamic Database Filtering:** Implementing the interactive ledger controls taught me how to construct conditional queries. Instead of fetching every record and filtering them locally on the client, I learned how to build a dynamic `filterQuery` object in Node.js so MongoDB only fetches the exactly requested dates, types, and categories.
 
 Thanks for checking out my code.
->>>>>>> 4d76526 (authentication, dashboard summary, monthly trends diagram, all the records, filteration and, user management only for super admin)
+
+---
+
+## 📘 API Documentation
+
+This section provides an overview of all available API endpoints.
+Each endpoint represents a specific action the backend performs when requested by the frontend.
+
+---
+
+### 🔐 1. Authentication
+
+Handles user registration and login. No authentication required.
+
+#### ➤ Register
+**POST** `/api/auth/register`
+Creates a new user account.
+
+**Request Body:**
+  * name
+  * email
+  * password
+
+---
+
+#### ➤ Login
+**POST** `/api/auth/login`
+Authenticates user and returns a token.
+
+**Request Body:**
+  * email
+  * password
+
+---
+
+### 💰 2. Records
+
+Manage financial records (income & expenses).
+⚠️ Requires authentication (JWT token in headers).
+
+#### ➤ Get Records
+**GET** `/api/records`
+Fetch all records.
+
+**Optional Query Params:**
+  * `type=income`
+  * `category=Salary`
+
+---
+
+#### ➤ Add Record
+**POST** `/api/records`
+
+**Request Body:**
+  * title
+  * amount
+  * type (income / expense)
+  * category
+  * date
+
+---
+
+#### ➤ Update Record (Admin Only)
+**PUT** `/api/records/:id`
+Update an existing record.
+
+---
+
+#### ➤ Delete Record (Admin Only)
+**DELETE** `/api/records/:id`
+Delete a record permanently.
+
+---
+
+### 👥 3. Users
+
+Manage users, roles, and account status.
+⚠️ Accessible only by SuperAdmin.
+
+#### ➤ Get All Users
+**GET** `/api/users`
+
+---
+
+#### ➤ Update User Role
+**PATCH** `/api/users/:id/role`
+
+**Role Values:**
+  * `0` → Admin
+  * `1` → Analyst
+  * `2` → Viewer
+
+---
+
+#### ➤ Update User Status
+**PATCH** `/api/users/:id/status`
+
+**Status Values:**
+  * `active`
+  * `inactive`
+
+---
+
+### 📊 4. Analytics
+
+#### ➤ Get Summary
+**GET** `/api/analytics/summary`
+
+**Returns:**
+  * Total income
+  * Total expense
+  * Net balance
